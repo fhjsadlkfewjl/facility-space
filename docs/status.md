@@ -1,19 +1,26 @@
-# Facility Space — pilot status, 11 November 2026
+# Состояние проекта
 
-**Problem:** the old Office Map and manual/Excel facilities workflows separate plans, seating, inventory, areas and operational decisions.
+Обновлено 25 ноября 2026 года. Это сводка по коду и сохранённым результатам проверок; состояние сервера в реальном времени здесь не отслеживается.
 
-**Solution:** one runnable Fastify + React + PostgreSQL service with Employee, Facilities/AHO and Admin experiences. Atlas was the UX concept; Facility Space is the service built around recovered office data and a repeatable migration pipeline.
+## Реализовано
 
-**Verified real data:** the recovered October snapshot imports 14 buildings, 77 legacy floors, 1,758 rooms, 4,670 furniture objects, 4,130 workplaces and 2,338 permanent assignments. All **58 active floors** have recovered editor snapshots and SVG backgrounds. The other **19 floors are inactive legacy records**. This is snapshot coverage, not live synchronisation. Object matching is 4,262/4,294 (99.25%): 32 live-only and 90 legacy-only objects remain explicitly listed. Import replay preserves counts.
+- Для сотрудников: карта, поиск людей, своё рабочее место и бронирования.
+- Для АХО: помещения, назначения и переносы, инвентарь, парковка, аренда, площади и стоимость.
+- Редактор: контуры помещений, мебель, отмена правок и сохранение версии.
+- Импорт CSV с предварительной проверкой, история изменений и список замечаний к данным.
 
-**Implemented:** maps, room classification/areas, inventory, seating, booking, parking engine, rate/cost views, CSV preview/validation/apply, layout editing and restore-as-new-version, audit/history, searchable/sortable facilities tables, and a persistent Data Quality review workflow. Employee self-service derives identity on the server, requires explicit move confirmation and only releases the current user's own assignment. Financial/admin endpoints remain protected.
+На отдельном сервере размещена копия с импортированными планами и данными. Исходный перенос включал 58 активных этажей с SVG и 19 неактивных этажей. Эти числа относятся к снимку переноса, а не к текущему учёту.
 
-**Quality and truthfulness:** quarantine remains **547** (518 ambiguous assignments, 11 unmatched inventory, 17 missing-floor rooms, one inactive resource). Review status does not remove or resolve source ambiguity. Inferred scale is not official scale. Parking/rates in the demo are synthetic. No production write operation was performed against the old portal.
+## Проверено
 
-**Validation:** see [validation-final.md](validation-final.md) for this run's actual build, test, browser, Docker, backup/restore and performance results. Security checks cover selected risks and are not a penetration test.
+25 ноября прошли сборка, серверные и Python-тесты, запуск Docker и все 19 браузерных сценариев в GitHub Actions. Проверки используют отдельные тестовые данные. Результаты каждого выпуска доступны в [GitHub Actions](https://github.com/fhjsadlkfewjl/facility-space/actions).
 
-**Remaining engineering limits:** generic bulk cross-floor inventory/workplace relocation is not implemented; use individually validated layout operations. Historical room location and interval-integrated costs are not implemented. A changed upstream snapshot needs an explicit merge/sync workflow. Restore is a layout operation, not a rollback of assignments or a whole database. See [master checklist](master-project-checklist.md).
+24 ноября на сервере проверены резервирование, восстановление в отдельную базу и запуск приложения на копии. Подробнее: [эксплуатация](operations-ru.md).
 
-**External work:** IT must confirm employee identity/sync, Blitz OIDC registration, role mappings and deployment. AHO must review classification and areas, resolve quarantine, provide parking/rates and conduct UAT. Corporate SSO and live employee sync are not completed.
+## До запуска для компании
 
-**Recommendation:** suitable for a candid father demonstration and bounded AHO UAT of the documented pilot workflows after checking this run's validation report. Not production-ready and not represented as a fully finished project.
+- IT: корпоративный вход, обновление сотрудников, права, внешние резервные копии и уведомления о сбоях.
+- АХО: проверка рассадки, площадей и классификации; реестры парковки, договоры и тарифы; приёмка рабочих сценариев.
+- Разработка: исправления по приёмке, проверка интеграций и нагрузки. Дополнительные ограничения перечислены в [списке работ](gap-list.md).
+
+Общий код доступа не заменяет личные учётные записи. Реальная база и планы передаются отдельно от публичного репозитория.

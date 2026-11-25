@@ -1,20 +1,18 @@
-# Доступ к Facility Space по IP — 15.11.2026
+# HTTPS по IP
 
-Адрес: https://2.29.173.184
+Адрес: https://2.29.173.184. Домен для текущего сервера не нужен.
 
-Вход: существующий экран Access token → Войти. Готовый ключ администратора сохранён только в локальном `backups/staging-owner-access.txt` (0600, исключён из пакета/git). Владелец этого ключа имеет полный доступ к staging. На VPS исходный ключ находится в `/opt/facility-space/.env.staging`, поле DEMO_TOKEN; для входа добавляется `:admin`, для АХО `:facilities`, для сотрудника `:employee`. Не добавлять ключ в URL.
+Используется сертификат Let's Encrypt для IP, профиль `shortlived`. Срок текущего сертификата смотрите командами ниже: даты первого выпуска уже не актуальны.
 
-Публично доступен экран входа; данные зданий, сотрудников и SVG требуют авторизации. Без ключа API возвращает 401. HTTP перенаправляется на HTTPS, кроме ACME challenge. PostgreSQL, API:3001 и frontend:8080 не опубликованы. Продукт и прикладные данные не менялись.
+Экран входа публичный; офисные данные и SVG доступны после авторизации. Без токена API возвращает 401. HTTP перенаправляется на HTTPS, кроме запросов проверки сертификата. PostgreSQL и внутренние порты приложения наружу не опубликованы.
 
-## Сертификат и продление
+## Продление
 
-Публично доверенный Let's Encrypt IP certificate, issuer YE1, SAN IP Address:2.29.173.184. Первый сертификат действителен до 21.11.2026 23:49:25 UTC. Chromium встроенного браузера открыл экран входа без предупреждений; curl и системный TLS trust прошли без insecure-флагов.
+`facility-cert-renew.timer` запускается в 00:00, 06:00, 12:00 и 18:00 UTC со случайной задержкой до 15 минут. Он вызывает `/usr/local/sbin/facility-cert-renew`: проверку Certbot, перезагрузку сертификата в Caddy и контроль срока. Ошибки записываются в журнал systemd.
 
-Certbot 5.10.0 закреплён по Docker digest в `/usr/local/sbin/facility-certbot`. Использованы production ACME endpoint и профиль `shortlived`, webroot `/var/www/certbot`. Приватный ключ остаётся на VPS в `/etc/letsencrypt`, Caddy подключает директорию только для чтения. Caddy не выпускает собственный сертификат: auto_https off, явные пути сертификата и ключа, default_sni для доступа по IP через Docker NAT.
+Certbot закреплён в контейнере через `/usr/local/sbin/facility-certbot`. Сертификаты находятся в `/etc/letsencrypt`; Caddy читает их без права записи. Сценарий повторяет загрузку сертификата и при отсутствии нового выпуска, чтобы исправить прежний сбой перезагрузки.
 
-`facility-cert-renew.timer`: каждый день в 00:00, 06:00, 12:00, 18:00 UTC плюс случайная задержка до 15 минут, Persistent=true. Запускает `/usr/local/sbin/facility-cert-renew`: certbot renew, затем обязательный `caddy reload --force` и проверку остатка срока. Reload выполняется также при успешной проверке без нового выпуска, чтобы повторить предыдущую неудачную загрузку. Ошибки отмечаются как failed в systemd journal. Тест `--dry-run` успешно выпустил тестовый сертификат и выполнил reload, не заменяя действующий production-сертификат.
-
-## Команды на VPS (root)
+## Проверка на сервере
 
 ```sh
 openssl x509 -in /etc/letsencrypt/live/facility-ip/cert.pem -noout -issuer -dates -ext subjectAltName
@@ -24,19 +22,19 @@ journalctl -u facility-cert-renew.service -n 40 --no-pager
 /usr/local/sbin/facility-certbot certificates
 ```
 
-Ручная проверка/продление, только если пора:
+Запустить проверку продления вручную:
 
 ```sh
 systemctl start facility-cert-renew.service
 ```
 
-Проверка полного механизма на тестовом ACME:
+Проверить продление на тестовом сервере сертификатов:
 
 ```sh
 /usr/local/sbin/facility-cert-renew --dry-run
 ```
 
-Проверка внешнего адреса без отключения доверия:
+Проверить внешний адрес:
 
 ```sh
 curl -I https://2.29.173.184
@@ -49,6 +47,7 @@ curl -o /dev/null -s -w '%{http_code}\n' https://2.29.173.184/api/buildings
 openssl s_client -connect 2.29.173.184:443 -servername 2.29.173.184 </dev/null 2>/dev/null | openssl x509 -noout -issuer -dates
 ```
 
-Рабочие конфигурации скопированы обратно в проект: compose.staging.yaml, deploy/staging/Caddyfile и deploy/staging/ip-https/. Обновление приложения не требует повторного выпуска сертификата. Сохранять /etc/letsencrypt, systemd timer и .env.staging. Не запускать заново восстановление базы.
 
-Официальный способ: https://letsencrypt.org/2026/03/11/shorter-certs-certbot.html
+Конфигурация: [Caddyfile](../deploy/staging/Caddyfile), [службы продления](../deploy/staging/ip-https), [Compose](../compose.staging.yaml).
+
+При обновлении приложения сохраняйте `/etc/letsencrypt`, таймер и `.env.staging`. Повторное восстановление базы или выпуск сертификата для обычного обновления не нужны. Доступы выдаются отдельно; [корпоративный вход](auth-integration.md) настраивается с IT.

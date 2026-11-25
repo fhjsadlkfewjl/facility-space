@@ -1,23 +1,25 @@
-# Legacy Office Map API — evidence 2026-10-15
+# API старой Office Map
 
-Endpoint: `/local/modules/adict.office_map/ajax.php`. Saved api.js uses POST with JSON body `{action,params}`; params is an ordered array. It does not explicitly add Content-Type, CSRF or Authorization headers. Same-origin browser credentials are implicit. This is observed frontend behavior, not proof that the server lacks CSRF validation. Never replay writes against production.
+Справка по сохранённому коду и наблюдениям от 15 октября 2026 года. Это описание источника переноса, а не API Facility Space.
 
-Response envelope: STATUS=OK and RESULT, otherwise ERROR is thrown. HTTP failures/non-JSON responses can fail before envelope handling. The complete list **found in the saved frontend corpus** is seven actions; undocumented server actions cannot be enumerated without backend source.
+Адрес: `/local/modules/adict.office_map/ajax.php`. Запрос — POST с JSON `{action, params}`, где `params` — упорядоченный массив. Ответ: `STATUS=OK` и `RESULT`; при ошибке — `ERROR`. Используется сессия портала.
 
-|Action|Mode|params|RESULT consumed by frontend|Source|
-|---|---|---|---|---|
-|getEditorData|read|[levelId]|canvas, templates, items; reload reads items|office-level-editor--state.js:402; captured geometry|
-|getPopupData|read|[tableNum]|popup markup/data passed to popup controller; not a guaranteed structured employee record|ctrl.js:14|
-|searchUser|read|[text]|array of employee search records|api.js:35; live read-only observation|
-|attachUserToTable|write|[userId,tableId,true]|array of changed items; each passed to setItem|office-level-editor--state.js:186|
-|detachUserFromTable|write|[userId,tableId]|one changed item passed to setItem|office-level-editor--state.js:166|
-|detachUser|write|[id]|caller-dependent; no live write verification|api.js:39|
-|saveObjects|write|[levelId,canvas.rawItems]|object with items replacing local list|office-level-editor--state.js:408–414|
+| Действие | Параметры | Что использовал старый интерфейс |
+|---|---|---|
+| `getEditorData` | `[levelId]` | План, шаблоны и объекты |
+| `getPopupData` | `[tableNum]` | Содержимое карточки |
+| `searchUser` | `[text]` | Результаты поиска сотрудников |
+| `attachUserToTable` | `[userId,tableId,true]` | Список изменённых объектов |
+| `detachUserFromTable` | `[userId,tableId]` | Изменённый объект |
+| `detachUser` | `[id]` | Результат зависит от вызывающего кода |
+| `saveObjects` | `[levelId,canvas.rawItems]` | Обновлённый список объектов |
 
-Live searchUser: query with no matches returned []; another query returned 100 records. Fields observed: id:number, name:string, position:string, haveTable:boolean, tableNum:object (nullable/array/object subtype not established). No department, subtitle or office field observed. 100 records does not prove a documented maximum. Names, IDs and query response values are excluded from this evidence. Observation was via the page API and browser console, not an exported HAR.
+Последние четыре действия изменяют данные. При исследовании рабочие записи старого портала не менялись. Полный серверный контракт, проверки прав и транзакции по клиентскому коду не установлены.
 
-Attach/detach require frontend useAttach flag. Existing table IDs must be positive; new negative temporary IDs change local owner data until save. The meaning of the third attach argument is not established beyond literal true. Do not invent a server-side override policy from it. saveObjects submits the entire rawItems array, not a delta; removals are represented by removing items from that array. Backend deletion/validation/transaction semantics remain unknown. Transform fields used by canvas include x/y/r; templates are referenced by tpl; id/tempId support temporary identity. Do not assert that this is the exhaustive accepted server schema.
+В поиске наблюдались поля `id`, `name`, `position`, `haveTable`, `tableNum`. Точная вложенная структура `tableNum` не установлена; 100 записей в одном ответе не доказывают предел выдачи.
 
-Observed frontend defect: setItem uses `if(index)` after findIndex, so index 0 and -1 are handled incorrectly. New implementation must not copy this logic. Authorization flags in frontend are not proof of backend enforcement.
+`saveObjects` передаёт весь массив, не только изменения. Координаты — `x/y/r`, шаблон — `tpl`; временные объекты имеют отдельные ID. Значение третьего аргумента `attachUserToTable` кроме передаваемого `true` неизвестно.
 
-Errors: captured getEditorData STATUS=FAIL / «Этаж не найден»; HTTP 502 for 296125 in prior capture. Other business error messages and limits cannot be inferred safely from the generic ERROR handler.
+В старом клиенте найдено условие `if(index)` после `findIndex`, неверно обрабатывающее 0 и −1. Эту логику не следует переносить.
+
+Наблюдались ответы «Этаж не найден» и HTTP 502. Ошибка чтения не означает удаление этажа. Отсутствие явного CSRF-поля в клиенте не доказывает отсутствие серверной проверки.

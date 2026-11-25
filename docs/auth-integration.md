@@ -1,5 +1,36 @@
-# Auth observations and IT contract
+# Корпоративный вход
 
-Authorized Firefox page is a Bitrix portal with administration, current-user and logout controls. Office Map wrapper uses same-origin POST JSON and implicit browser session credentials. No explicit CSRF field is added by that wrapper. No session/cookie/token values were exported into project evidence. This observation does not establish the complete Bitrix CSRF policy or session lifetime.
+Сейчас на сервере используется вход по коду. Для постоянной работы сотрудников нужен вход через учётные записи компании.
 
-No login/logout action, SSO enrollment or identity bypass was performed. SSO redirects, identity-provider issuer and claims are unverified. Require IT discovery/JWKS, issuer/audience, subject-to-employee mapping, approved role and building scope claims, deactivation semantics, test identities, logout/session policy and refresh frequency. Credentials belong in deployment secret storage, never ZIP. Existing local demo authentication is synthetic and not a corporate SSO implementation.
+## Что уже есть
+
+API проверяет подпись и срок действия JWT, издателя и получателя токена. Из токена берутся идентификатор пользователя, сотрудника и роль. Проверка реализована в [identity.ts](../apps/api/src/adapters/identity.ts).
+
+Переход на страницу входа компании, получение токена и выход из корпоративной сессии ещё нужно подключить. Наличие проверки JWT само по себе не даёт готовый вход через Bitrix или Blitz.
+
+## Что получить от IT
+
+- Какую систему входа использовать и кто зарегистрирует в ней приложение.
+- Адрес ключей подписи, идентификатор издателя и получателя токена.
+- Как связать учётную запись с сотрудником в Facility Space.
+- Кому выдать роли сотрудника, АХО и администратора; кто утверждает доступ к зданиям.
+- Правила завершения сессии, отзыва доступа и отключения уволенных сотрудников.
+- Тестовые учётные записи для каждой роли.
+
+## Что настроить
+
+На сервере: `AUTH_MODE=oidc`, `NODE_ENV=production`, `OIDC_JWKS_URL`, `OIDC_ISSUER`, `OIDC_AUDIENCE`. Адрес ключей должен использовать HTTPS. При сборке интерфейса `VITE_DEMO_TOKEN` оставляют пустым.
+
+Текущий API ожидает поля JWT: `sub`, `exp`, `iat`, `employee_id`, `office_role`. Роль — `employee`, `facilities` или `admin`. Если система компании выдаёт другие поля, потребуется согласованное преобразование. `employee_id` должен совпадать с записью в базе; у импортированных записей используется формат `e-<ID>`.
+
+Права АХО на здания хранятся в `building_managers`. Назначение ответственного за здание не меняет роль пользователя.
+
+## Как проверить
+
+1. Войти каждой тестовой учётной записью и проверить сотрудника и меню.
+2. Убедиться, что сотрудник меняет только свои назначения и брони.
+3. Проверить, что АХО меняет данные только разрешённых зданий.
+4. Проверить отказ для просроченного токена, неверной роли и отозванного доступа.
+5. Проверить выход и повторный вход. После приёмки отключить общий демонстрационный доступ.
+
+Секреты хранятся на сервере и передаются IT отдельно от исходников. Обновление справочника сотрудников описано в [синхронизации](sync-strategy.md).

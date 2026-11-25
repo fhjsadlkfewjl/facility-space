@@ -1,70 +1,56 @@
-# Обновление 2026-10-15 — имеет приоритет над предыдущим описанием
+# API
 
-Новые routes: GET quality-queue (category/building/offset/format=csv), GET unified-search?q; GET/POST rooms/:id/area-history; POST rooms/import-preview {csv}, POST rooms/import-apply {previewId}; POST workplaces/bulk-status; POST floors/:id/versions/:version/restore {expectedVersion}. Точные схемы Zod — bulk.ts/continuation.ts/restore.ts. Legacy actions отдельно в legacy-api.md.
+Базовый путь — `/api`, формат — JSON. Нужен заголовок `Authorization: Bearer <токен>`. `/health` доступен без входа и проверяет соединение с базой.
 
----
+Корпоративный вход описан [отдельно](auth-integration.md). В локальном демо используются роли `employee`, `facilities`, `admin`; этот режим запрещён при `NODE_ENV=production`.
 
-> Расширения Facility и актуальные ограничения прав: [facility-api.md](facility-api.md).
+## Основные запросы
 
-# REST API V1
+| Метод и путь | Назначение |
+|---|---|
+| `GET /me` | Пользователь и роль |
+| `GET /buildings`, `GET /buildings/:id`, `GET /floors?buildingId=` | Здания и этажи |
+| `GET /floors/:id/layout` | План, помещения, мебель и места |
+| `GET /rooms`, `GET /rooms/:id` | Помещения |
+| `GET /workplaces`, `GET /workplaces/:id` | Рабочие места |
+| `GET /search?q=`, `GET /unified-search?q=` | Поиск людей и объектов |
+| `GET /departments` | Подразделения |
+| `GET /me/workplace` | Своё назначение |
+| `POST /me/workplace`, `POST /me/workplace/release` | Занять или освободить своё место |
+| `POST /assignments` | Назначить или снять сотрудника; АХО и администратор |
+| `GET /assignments` | История назначений; сотрудник получает только свою |
+| `POST /me/bookings` | Создать свою бронь |
+| `GET /bookings`, `POST /bookings`, `POST /bookings/:id/cancel` | Список, создание и отмена броней |
+| `GET /floors/:id/versions` | Версии плана |
+| `PUT /floors/:id/editor` | Сохранить черновик редактора одной версией |
+| `GET /audit` | Журнал изменений для АХО и администратора |
 
-Base `/api`; JSON. `Authorization: Bearer <approved gateway JWT>`. Для локального демо `Bearer <DEMO_TOKEN>:employee|facilities|admin`; в production этот режим запрещён. `/health` без auth выполняет SELECT 1, остальные пути требуют identity.
+Личные запросы не принимают произвольный `employeeId`: сервер берёт его из сессии. АХО изменяет данные в пределах назначенных зданий; администратор имеет полный доступ.
 
-| Метод / путь | Доступ | Назначение |
-|---|---|---|
-| GET /me | любой | Проверенный actor/роль |
-| GET /offices, /buildings | любой | Активные здания и счётчики |
-| GET /buildings/:id | любой | Обзор здания + этажи |
-| GET /floors?buildingId= | любой | Активные этажи |
-| GET /floors/:id/layout | любой | floor, rooms, furniture + сотрудник/место; без финансов |
-| PUT /floors/:id/layout | facilities/admin | Атомарное перемещение/поворот мебели + версия |
-| GET /floors/:id/versions | facilities/admin | Метаданные последних 100 версий |
-| GET /rooms?floorId= | любой | Помещения этажа |
-| GET /rooms/:id | любой | Инспектор помещения |
-| PATCH /rooms/:id/space | facilities/admin | Учётная площадь и тип |
-| GET /workplaces?floorId= | любой | Рабочие места, максимум 10 000 |
-| GET /workplaces/:id | любой | Инспектор рабочего места |
-| GET /search?q=&offset= | любой | Поиск человека, команды, должности или номера места; 50 записей на страницу |
-| GET /departments | любой | Проекция подразделений и headcount |
-| GET /assignments | любой | Последние 500; сотруднику только собственная история |
-| POST /assignments | self / facilities / admin | Назначение, перевод или освобождение |
-| GET /space-types | любой | Нефинансовый справочник |
-| POST /space-types | facilities/admin | Создать тип площади |
-| GET /costs | facilities/admin | Действующий тариф/стоимость по помещениям |
-| GET /cost-rates | facilities/admin | Тарифы с периодами действия |
-| POST /cost-rates | facilities/admin | Создать непересекающийся тариф |
-| GET /parking | любой | Места и текущие назначения |
-| POST /parking | facilities/admin | Создать парковочное место |
-| POST /parking/assignments | self / facilities / admin | Назначить/переназначить/освободить |
-| GET /audit | facilities/admin | Последние 100 событий |
+## Назначение места
 
-Employee никогда не получает rates/total_cost через общие ответы. `area_m2` — нефинансовая информация. Имена/подразделения доступны аутентифицированным сотрудникам в пределах согласуемого корпоративного каталога.
-
-## Примеры
+АХО отправляет `POST /api/assignments`:
 
 ```json
-POST /api/assignments
 {"employeeId":"employee-1","workplaceId":"workplace-7"}
 ```
 
-Передайте `workplaceId: null` для освобождения. Переназначение не вытесняет другого сотрудника с занятого целевого места. Повтор на то же место возвращает существующее назначение. Сроки/будущие бронирования/несколько одновременных мест V1 не поддерживает.
+`workplaceId: null` снимает назначение. При переносе прежнее назначение закрывается вместе с созданием нового. Занятые, отключённые и забронированные места отклоняются.
+
+Сотрудник отправляет в `/api/me/workplace` поля `workplaceId`, `expectedAssignmentId` и `confirmMove`. Для снятия в `/api/me/workplace/release` нужен текущий `expectedAssignmentId`. Устаревшее назначение нельзя снять подтверждением из старой карточки.
+
+## Сохранение плана
+
+Для перемещения существующей мебели есть `PUT /api/floors/:id/layout`:
 
 ```json
-PUT /api/floors/demo-floor/layout
 {"expectedVersion":1,"comment":"Перестановка","changes":[{"id":"furniture-1","x":140,"y":170,"rotation":0}]}
 ```
 
-`roomId` опционален: сервер выводит комнату из конечной геометрии. IDs только с текущего этажа, дубликаты отклоняются. До 500 изменений; координаты конечные в пределах ±100000, поворот ±360. Ответ `{"version":2}`. При 409 сохраните draft отдельно, загрузите текущую версию и примените изменения осознанно. В UI конфликт не переотправляется автоматически.
+Общее сохранение комнат и мебели использует `/api/floors/:id/editor`. При конфликте версии нужно загрузить новый план и сверить правки; повторная отправка вслепую недопустима.
 
-```json
-POST /api/cost-rates
-{"space_type_id":"office","building_id":"demo-building","room_id":null,"rate_per_m2":2800,"currency":"RUB","period":"month","valid_from":"2027-01-01","valid_to":null}
-```
+## Ошибки
 
-При room_id building_id должен быть null; тип комнаты обязан совпадать. Для одного scope нельзя создавать перекрывающиеся периоды. В V1 нет UI изменения/закрытия старого тарифа; новые ставки можно добавлять для другого scope или неперекрывающегося периода. Для изменения открытого тарифа требуется следующая административная операция (зафиксировано в assumptions), не прямое редактирование production DB.
+Ответ: `{"error":"описание"}`. Основные коды: 400 — неверные данные, 401 — нужен вход, 403 — нет прав, 404 — объект не найден, 409 — конфликт, 422 — непригодная геометрия или неизвестные размеры. Общий предел JSON — 1 МиБ; у отдельных загрузок задан свой предел.
 
-## Ошибки и ограничения
-
-400 — невалидное тело/параметр; 401 — нет/невалидная identity; 403 — нет прав; 404 — нет сущности; 409 — место занято/версия устарела/конкурентная операция/перекрывающийся тариф; 422 — геометрия невалидна или не хватает исходных размеров. JSON: `{"error":"..."}`. 500 не раскрывает стек/SQL. Есть rate limiting 300 запросов/мин на клиент и body limit 1 MiB; в production за proxy необходимо согласовать trustProxy и IP policy. Audit и rate endpoints не возвращают секреты identity.
-
-Каталог зданий/этажей/комнат/мебели в MVP создаётся importer/seed; произвольный каталоговый CRUD, рисование новых комнат и добавление/удаление мебели через UI не реализованы. Layout editor V1 работает с размещением существующей мебели. Это граница MVP, не обещание полного CAD.
+Точные схемы запросов: [общие типы](../packages/shared), [основные маршруты](../apps/api/src/app.ts), [редактор](../apps/api/src/editor.ts). [Операции АХО](facility-api.md).

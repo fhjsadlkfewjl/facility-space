@@ -1,34 +1,17 @@
-# Validation — 11 November 2026
+# Проверки проекта
 
-Executed against the recovered continuation project with this run's changes. Earlier October environment failures are historical, not current results.
+## 25 ноября 2026
 
-| Check | Result |
-|---|---|
-| Install | PASS — npm ci; compatible dependency fixes applied |
-| Build | PASS — TypeScript and Vite production build |
-| Application/API/import/geometry/permissions/booking/parking/audit/CSV/security | **58 PASS, 0 FAIL, 0 SKIP** with TEST_DATABASE_URL configured |
-| Python import/HAR/snapshot | **5 PASS** |
-| Chrome demo E2E | **5 PASS** |
-| Chrome recovered real floor/SVG | **1 PASS**, read-only map inspection |
-| Fresh recovered data import + replay | PASS; counts preserved; per-floor evidence in reconciliation report |
-| PostgreSQL native concurrency | PASS — two assignments; booking race; workplace and parking booking vs permanent assignment; layout version conflict; audit consistency |
-| Docker fresh database → migrations → synthetic seed → API/web health | PASS on final release stack |
-| Restart → persistence | PASS — 16 workplaces, IN_REVIEW review and one audit entry retained |
-| Backup → separate verification database | PASS — pg_dump/pg_restore; same workplace/review/audit checks; baseline snapshot is a full object |
-| Dependency security audit | Seven initial advisories corrected with compatible updates; **zero remaining reported** |
+В GitHub Actions прошли сборка, серверные тесты с PostgreSQL, Python-тесты, запуск через Docker и 19 браузерных сценариев. Браузерные тесты не отключены и проходят без повторных попыток.
 
-The final browser suite exercises self assignment/move/release, search→map, role navigation, responsive layout, AHO dashboard, inventory verification, booking conflict, parking screen, CSV export, persisted DQ review, 30° rotation, undo/redo, version comparison and restoration. It is not exhaustive coverage of every form and error path. Separate API tests cover parking engine behavior. Docker smoke uses synthetic seed; the full recovered dataset is verified separately in an isolated PGlite database.
+Проверяются вход и права, поиск и карта, назначения и снятие, брони и конфликты, парковка, инвентаризация, помещения, фильтр подразделения, редактор с отменой и сохранением, импорт и аренда.
 
-The initial synthetic layout version previously contained only furniture; the new restore scenario exposed this. Seed now records a full layout. New imports record baselines, and existing missing baselines are appended as current observations without rewriting history. Historical incomplete versions remain immutable and are rejected safely.
+[Результаты запусков](https://github.com/fhjsadlkfewjl/facility-space/actions). Тесты работают на отдельных данных и не изменяют рабочий сервер. Прохождение набора не означает проверку каждого поля и каждого возможного сбоя.
 
-## Performance
+## Ранее выполненные проверки
 
-[performance-final.json](performance-final.json) records cold and three warm runs for dashboard, inventory, employee/global search, busiest floor, workplaces, bookings, availability, reports and Data Quality on 1,758 rooms, 4,670 furniture objects and roughly 35,649 employees. Every measured endpoint returned HTTP 200. These are local sequential PGlite measurements, not load testing or a production SLA. Existing indexes were retained; no speculative index changes were made.
+- 11 ноября: импорт и повторная загрузка снимка, конкурентные операции PostgreSQL, запуск и восстановление тестовой базы Docker. В отчёте того дня — 58 серверных, 5 Python- и 5 браузерных проверок; одна проверка реальной карты без сохранения.
+- 15 ноября: перенос копии на VPS, контроль содержимого таблиц, вход трёх ролей и HTTPS. [Отчёт](pilot-pack/verification-summary.md).
+- 24 ноября: восстановление 32 таблиц и 59 365 записей в отдельную базу, запуск приложения на копии и отказ неисправного обновления. [Отчёт](operations-status-20261124.md).
 
-## Security scope
-
-Tests cover selected malformed/oversized inputs, permissions/IDOR, self-service identity and stale confirmation, occupied-place conflicts, SVG and CSV handling, geometry/timestamps, immutable history and transaction audit consistency. Employee general assignment calls are denied; self-service accepts no employee ID. Database uniqueness/locking remains a final concurrency guard. This is **not a complete penetration test**.
-
-No old-portal production write was performed. No corporate OIDC client or live employee sync was claimed as validated.
-
-Machine-readable execution summary: [validation-final.json](validation-final.json).
+Замеры скорости на локальной PGlite не являются нагрузочным тестом сервера. Корпоративный вход и нагрузку в среде компании проверяют отдельно.
