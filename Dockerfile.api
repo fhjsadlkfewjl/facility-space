@@ -1,0 +1,15 @@
+FROM node:24-alpine
+WORKDIR /app
+COPY package*.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci --ignore-scripts && npm rebuild esbuild
+COPY apps/api apps/api
+COPY packages packages
+COPY scripts scripts
+COPY db db
+COPY tsconfig.json .
+USER node
+EXPOSE 3001
+CMD ["node","--import","tsx","scripts/boot.ts"]

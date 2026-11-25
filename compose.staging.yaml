@@ -1,0 +1,105 @@
+name: facility-space-staging
+x-api-environment: &api-environment
+  PGHOST: db
+  PGPORT: 5432
+  PGDATABASE: ${POSTGRES_DB:-facility_staging}
+  PGUSER: ${POSTGRES_USER:-facility}
+  PGPASSWORD: ${POSTGRES_PASSWORD:?Generate .env.staging first}
+  NODE_ENV: staging
+  AUTH_MODE: demo
+  DEMO_EMPLOYEE_ID: local-reviewer
+  DEMO_TOKEN: ${DEMO_TOKEN:?Generate .env.staging first}
+  HOST: 0.0.0.0
+  PORT: 3001
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-facility_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-facility}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Generate .env.staging first}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+  migrate:
+    image: facility-space-staging-api:${IMAGE_TAG:-current}
+    build:
+      context: .
+      dockerfile: deploy/staging/Dockerfile.api
+    environment: *api-environment
+    command: [node, scripts/staging-init.js, migrate]
+    networks: [database]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: "no"
+  init-data:
+    # One-shot loader reads root-owned 0600 snapshot; the API remains unprivileged.
+    user: "0:0"
+    image: facility-space-staging-api:${IMAGE_TAG:-current}
+    environment: *api-environment
+    command: [node, scripts/staging-init.js, restore]
+    volumes: [./staging-data:/staging-data:ro]
+    networks: [database]
+    profiles: [setup]
+    depends_on:
+      db: {condition: service_healthy}
+    restart: "no"
+  api:
+    image: facility-space-staging-api:${IMAGE_TAG:-current}
+    build:
+      context: .
+      dockerfile: deploy/staging/Dockerfile.api
+    environment: *api-environment
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    networks: [database, edge]
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+  web:
+    image: facility-space-staging-web:${IMAGE_TAG:-current}
+    build:
+      context: .
+      dockerfile: deploy/staging/Dockerfile.web
+    networks: [edge]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:8080/']
+      interval: 10s
+      timeout: 3s
+      retries: 15
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:-:80}
+    ports:
+      - "${HTTP_BIND:-127.0.0.1}:80:80"
+      - "${HTTP_BIND:-127.0.0.1}:443:443"
+    volumes:
+      - ./deploy/staging:/etc/caddy:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [edge]
+    depends_on:
+      api: {condition: service_healthy}
+      web: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  caddy-data:
+  caddy-config:
+networks:
+  edge:
+  database:
+    internal: true

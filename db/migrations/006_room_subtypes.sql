@@ -1,0 +1,15 @@
+ALTER TABLE space_types ADD COLUMN subtype text NOT NULL DEFAULT 'other' CHECK(subtype IN ('office','open_space','meeting_room','corridor','restroom','kitchen','break_room','lobby','storage','server_room','technical','parking','outdoor','other'));
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_office','Кабинет','OFFICE','office');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_open_space','Открытый офис','OFFICE','open_space');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_meeting_room','Переговорная','OFFICE','meeting_room');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_corridor','Коридор','COMMON','corridor');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_restroom','Санузел','COMMON','restroom');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_kitchen','Кухня','COMMON','kitchen');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_break_room','Комната отдыха','COMMON','break_room');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_lobby','Холл','COMMON','lobby');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_storage','Склад','TECHNICAL','storage');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_server_room','Серверная','TECHNICAL','server_room');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_technical','Техническое помещение','TECHNICAL','technical');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_parking','Парковка','OTHER','parking');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_outdoor','Открытая территория','OTHER','outdoor');
+INSERT INTO space_types(id,name,category,subtype) VALUES('standard_other','Другое','OTHER','other');

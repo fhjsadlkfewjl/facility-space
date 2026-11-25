@@ -1,0 +1,17 @@
+ALTER TABLE space_types ADD COLUMN category text NOT NULL DEFAULT 'OTHER' CHECK(category IN ('OFFICE','COMMON','TECHNICAL','OTHER'));
+ALTER TABLE floors ADD COLUMN meters_per_unit double precision CHECK(meters_per_unit>0 AND meters_per_unit<10000);
+ALTER TABLE rooms ADD COLUMN calculated_area_m2 numeric CHECK(calculated_area_m2>=0);
+ALTER TABLE furniture ADD COLUMN condition text NOT NULL DEFAULT 'in_use' CHECK(condition IN ('in_use','stored','repair','retired'));
+ALTER TABLE furniture ADD COLUMN checked_at timestamptz;
+ALTER TABLE furniture ADD COLUMN checked_by text;
+ALTER TABLE furniture ADD COLUMN inventory_note text NOT NULL DEFAULT '';
+ALTER TABLE parking_spots ADD COLUMN zone text NOT NULL DEFAULT '';
+ALTER TABLE parking_assignments ADD COLUMN vehicle text NOT NULL DEFAULT '';
+ALTER TABLE workplaces DROP CONSTRAINT workplaces_furniture_id_key;
+CREATE TABLE building_managers (building_id text NOT NULL REFERENCES buildings,employee_id text NOT NULL REFERENCES employees_projection,role text NOT NULL CHECK(role IN ('manager','deputy')),PRIMARY KEY(building_id,employee_id));
+CREATE TABLE bookings (id text PRIMARY KEY,workplace_id text REFERENCES workplaces,parking_spot_id text REFERENCES parking_spots,employee_id text NOT NULL REFERENCES employees_projection,starts_at timestamptz NOT NULL,ends_at timestamptz NOT NULL,status text NOT NULL DEFAULT 'confirmed' CHECK(status IN ('confirmed','cancelled')),vehicle text NOT NULL DEFAULT '',created_by text NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),CHECK(ends_at>starts_at),CHECK((workplace_id IS NULL)<>(parking_spot_id IS NULL)));
+CREATE INDEX booking_workplace_window ON bookings(workplace_id,starts_at,ends_at) WHERE status='confirmed';
+CREATE INDEX booking_parking_window ON bookings(parking_spot_id,starts_at,ends_at) WHERE status='confirmed';
+CREATE INDEX booking_employee_window ON bookings(employee_id,starts_at,ends_at) WHERE status='confirmed';
+CREATE INDEX inventory_number_search ON furniture(inventory_number);
+CREATE TABLE parking_rates (id text PRIMARY KEY,building_id text NOT NULL REFERENCES buildings,rate_per_spot numeric NOT NULL CHECK(rate_per_spot>=0),currency text NOT NULL CHECK(currency ~ '^[A-Z]{3}$'),valid_from date NOT NULL,valid_to date,CHECK(valid_to IS NULL OR valid_to>valid_from));

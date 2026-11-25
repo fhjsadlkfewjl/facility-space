@@ -1,0 +1,35 @@
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci --ignore-scripts
+COPY tsconfig.json tsconfig.staging.json ./
+COPY apps/api/src apps/api/src
+COPY packages/shared/src packages/shared/src
+COPY scripts/migrate.ts scripts/sql-statements.ts scripts/staging-init.ts scripts/
+RUN npx tsc -p tsconfig.staging.json
+
+FROM node:24-alpine AS dependencies
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/shared/package.json packages/shared/package.json
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN node -e "const fs=require('fs');const p='packages/shared/package.json';const j=JSON.parse(fs.readFileSync(p));j.exports='./src/index.js';fs.writeFileSync(p,JSON.stringify(j));"
+
+FROM node:24-alpine
+WORKDIR /app
+ENV NODE_ENV=staging HOST=0.0.0.0 PORT=3001
+COPY --from=dependencies /app/package.json ./package.json
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=build /app/dist-staging/apps ./apps
+COPY --from=build /app/dist-staging/packages/shared/src ./packages/shared/src
+COPY --from=build /app/dist-staging/scripts ./scripts
+COPY db/migrations ./db/migrations
+USER node
+EXPOSE 3001
+CMD ["node", "apps/api/src/server.js"]

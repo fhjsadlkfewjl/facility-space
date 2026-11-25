@@ -1,0 +1,24 @@
+{
+ auto_https off
+ default_sni 2.29.173.184
+}
+http://2.29.173.184 {
+ handle /.well-known/acme-challenge/* {
+  root * /var/www/certbot
+  file_server
+ }
+ handle {
+  redir https://2.29.173.184{uri} permanent
+ }
+}
+https://2.29.173.184 {
+ tls /etc/letsencrypt/live/facility-ip/fullchain.pem /etc/letsencrypt/live/facility-ip/privkey.pem
+ encode gzip
+ @api path /api /api/* /health
+ handle @api {
+  reverse_proxy api:3001
+ }
+ handle {
+  reverse_proxy web:8080
+ }
+}

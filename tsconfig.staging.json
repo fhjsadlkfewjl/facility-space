@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "outDir": "dist-staging",
+    "rootDir": ".",
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["apps/api/src", "packages/shared/src", "scripts/migrate.ts", "scripts/sql-statements.ts", "scripts/staging-init.ts"],
+  "exclude": ["node_modules", "tests", "apps/web"]
+}

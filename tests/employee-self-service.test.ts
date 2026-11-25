@@ -1,0 +1,51 @@
+import {test,before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {embedded} from '../apps/api/src/repositories/database.js';
+import {migrate} from '../scripts/migrate.js';
+import {seed} from '../scripts/seed.js';
+import {buildApp} from '../apps/api/src/app.js';
+const db=embedded();let app:Awaited<ReturnType<typeof buildApp>>;
+before(async()=>{await migrate(db);await seed(db);app=await buildApp(db,{authenticate:async header=>({id:'test',employeeId:'employee-1',role:header==='admin'?'admin':'employee'})});});
+after(async()=>{await app?.close();await db.close();});
+const req=(method:any,url:string,payload?:any,role='employee')=>app.inject({method,url,payload,headers:{authorization:role}});
+test('self service derives identity, requires explicit move and rejects stale confirmation',async()=>{
+ const old=(await req('GET','/api/me/workplace')).json();assert(old.assignment_id);
+ assert.equal((await req('POST','/api/me/workplace',{workplaceId:'workplace-7',expectedAssignmentId:null,employeeId:'employee-2'})).statusCode,400);
+ assert.equal((await req('POST','/api/assignments',{workplaceId:'workplace-7',employeeId:'employee-1'})).statusCode,403);
+ assert.equal((await req('POST','/api/me/workplace',{workplaceId:'workplace-7',expectedAssignmentId:null})).statusCode,409);
+ assert.equal((await req('POST','/api/me/workplace',{workplaceId:'workplace-7',expectedAssignmentId:old.assignment_id})).statusCode,409);
+ assert.equal((await req('POST','/api/me/workplace',{workplaceId:'workplace-2',expectedAssignmentId:old.assignment_id,confirmMove:true})).statusCode,409);
+ assert.equal((await req('POST','/api/me/workplace',{workplaceId:'workplace-7',expectedAssignmentId:old.assignment_id,confirmMove:true})).statusCode,200);
+ assert.equal((await req('POST','/api/me/workplace/release',{expectedAssignmentId:old.assignment_id})).statusCode,409);
+ const current=(await req('GET','/api/me/workplace')).json();assert.equal(current.workplace_id,'workplace-7');
+ const another=(await db.query("SELECT id FROM workplace_assignments WHERE employee_id='employee-2' AND valid_to IS NULL")).rows[0];
+ assert.equal((await req('POST','/api/me/workplace/release',{expectedAssignmentId:another.id})).statusCode,409);
+ assert.equal((await req('POST','/api/me/workplace/release',{expectedAssignmentId:current.assignment_id})).statusCode,200);
+ assert.equal((await req('GET','/api/me/workplace')).json(),null);
+ assert.equal((await req('POST','/api/me/workplace',{workplaceId:'workplace-7',expectedAssignmentId:null})).statusCode,200);
+ assert.equal((await db.query("SELECT count(*)::int n FROM audit_log WHERE action='workplace.reassign'")).rows[0].n,3);
+});
+test('employee cannot access management reads or modify layout and rooms',async()=>{
+ for(const url of ['/api/costs','/api/cost-rates','/api/audit','/api/quality-queue','/api/inventory','/api/floors/demo-floor/versions'])assert.equal((await req('GET',url)).statusCode,403,url);
+ assert.equal((await req('PUT','/api/floors/demo-floor/layout',{expectedVersion:1,changes:[]})).statusCode,403);
+ assert.equal((await req('PATCH','/api/rooms/room-1/space',{space_type_id:'office',area_m2:10})).statusCode,403);
+});
+test('quality reviews persist, audit, reject stale changes and enforce roles',async()=>{
+ const issue=(await req('GET','/api/quality-queue',undefined,'admin')).json().rows[0];assert(issue);
+ const input={category:issue.category,id:issue.id,status:'IN_REVIEW',expectedRevision:0,comment:'Check source',assignToMe:true};
+ assert.equal((await req('POST','/api/quality-review',input)).statusCode,403);
+ assert.equal((await req('POST','/api/quality-review',input,'admin')).statusCode,200);
+ assert.equal((await req('POST','/api/quality-review',input,'admin')).statusCode,409);
+ const saved=(await req('GET','/api/quality-queue',undefined,'admin')).json().rows.find((r:any)=>r.id===issue.id&&r.category===issue.category);
+ assert.equal(saved.status,'IN_REVIEW');assert.equal(saved.revision,1);assert.equal(saved.comment,'Check source');
+ assert.equal((await req('POST','/api/quality-review',{...input,status:'RESOLVED',expectedRevision:1},'admin')).statusCode,400);
+});
+test('classification history is recorded across edits and immutable',async()=>{
+ const room=(await db.query('SELECT id,space_type_id FROM rooms ORDER BY id LIMIT 1')).rows[0];
+ const type=(await db.query('SELECT id FROM space_types WHERE id<>$1 LIMIT 1',[room.space_type_id])).rows[0];
+ const before=(await db.query('SELECT count(*)::int n FROM room_classification_history WHERE room_id=$1',[room.id])).rows[0].n;
+ await db.query('UPDATE rooms SET space_type_id=$2 WHERE id=$1',[room.id,type.id]);
+ const history=(await db.query('SELECT * FROM room_classification_history WHERE room_id=$1 ORDER BY id',[room.id])).rows;
+ assert.equal(history.length,before+1);assert.equal(history.at(-1).space_type_id,type.id);
+ await assert.rejects(()=>db.query('DELETE FROM room_classification_history WHERE room_id=$1',[room.id]));
+});

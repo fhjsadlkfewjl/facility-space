@@ -1,0 +1,9 @@
+#!/bin/bash
+set -euo pipefail
+exec 9>/run/lock/facility-cert-renew.lock
+flock -n 9 || exit 0
+/usr/local/sbin/facility-certbot renew --cert-name facility-ip --non-interactive --no-random-sleep-on-renew "$@"
+# Force re-read even when configuration is unchanged. Also retries a previous failed reload.
+cd /opt/facility-space
+docker compose --env-file .env.staging -f compose.staging.yaml exec -T caddy caddy reload --config /etc/caddy/Caddyfile --force
+openssl x509 -in /etc/letsencrypt/live/facility-ip/cert.pem -checkend 86400 -noout
