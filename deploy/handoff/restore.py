@@ -23,8 +23,8 @@ config={'name':a.name,'services':{
 'api':{'image':images['api'],'environment':api_env,'networks':['database','edge'],'healthcheck':{'test':['CMD','node','-e',"fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"],'interval':'3s','timeout':'5s','retries':40}},
 'web':{'image':images['web'],'networks':['edge']},
 'gateway':{'image':images['caddy'],'networks':['edge'],'ports':[f'127.0.0.1:{a.port}:8080'],'volumes':[str(root/'Caddyfile.restore')+':/etc/caddy/Caddyfile:ro']}
-},'networks':{'database':{'internal':True},'edge':{'internal':True}},'volumes':{'data':{}}}
-(root/'Caddyfile.restore').write_text(':8080 {\n @api path /api /api/* /health\n handle @api { reverse_proxy api:3001 }\n handle { reverse_proxy web:8080 }\n}\n')
+},'networks':{'database':{'internal':True},'edge':{}},'volumes':{'data':{}}}
+(root/'Caddyfile.restore').write_text(':8080 {\n @api path /api /api/* /health\n handle @api {\n  reverse_proxy api:3001\n }\n handle {\n  reverse_proxy web:8080\n }\n}\n')
 (root/'restore-compose.json').write_text(json.dumps(config,indent=2))
 c=['docker','compose','--env-file',str(secret),'-f',str(root/'restore-compose.json')]
 run(c+['up','-d','--wait','--wait-timeout','180','db'])
