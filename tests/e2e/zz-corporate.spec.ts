@@ -1,49 +1,52 @@
+import { signIn, confirmChanges } from "./session";
 import { test, expect } from "@playwright/test";
 const headers = { authorization: "Bearer local-demo-token-only:admin" };
 test("employee books on map for an interval and cancels their booking", async ({
   page,
 }) => {
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Открыть карту", exact: false })
-    .click();
-  const day = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
-  await page.getByLabel("Бронирование с", { exact: true }).fill(day + "T09:00");
-  await page.getByLabel("До", { exact: true }).fill(day + "T18:00");
+  await signIn(page);
   await page.getByRole("button", { name: "D-015", exact: true }).click();
-  await expect(
-    page
-      .locator(".map-booking")
-      .getByText("Свободно на выбранное время", { exact: true }),
-  ).toBeVisible();
   await page
-    .getByRole("button", { name: "Забронировать место", exact: true })
+    .getByRole("button", { name: "Забронировать", exact: true })
+    .click();
+  const form = page.locator(".employee-booking");
+  const day = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10);
+  await form.getByLabel("Дата", { exact: true }).fill(day);
+  await form.getByLabel("С", { exact: true }).fill("09:00");
+  await form.getByLabel("До", { exact: true }).fill("18:00");
+  await expect(form).toContainText("На выбранное время броней нет");
+  await form
+    .getByRole("button", { name: "Забронировать", exact: true })
     .click();
   await expect(
-    page.getByText(
-      "Место забронировано. Бронь доступна в разделе «Бронирования».",
-    ),
+    form.getByRole("heading", { name: "Бронирование создано" }),
   ).toBeVisible();
-  await page.screenshot({
-    path: "docs/screenshots/20261115-booking-map-test.png",
-    fullPage: true,
+  await form
+    .getByRole("button", { name: "Мои бронирования", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Будущие", exact: true }).click();
+  const card = page.locator("article").filter({ hasText: "D-015" });
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Отменить", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Отменить бронирование", exact: true })
+    .click();
+  await expect(card).toHaveCount(0);
+  const history = await page.request.get("http://127.0.0.1:3101/api/bookings", {
+    headers: { authorization: "Bearer local-demo-token-only:employee" },
   });
-  await page.getByRole("button", { name: "Бронирования", exact: true }).click();
-  await expect(page.getByRole("table")).toContainText("D-015");
-  await page
-    .getByRole("row")
-    .filter({ hasText: "D-015" })
-    .getByRole("button", { name: "Отменить бронь" })
-    .click();
-  await expect(
-    page.getByRole("row").filter({ hasText: "D-015" }),
-  ).toContainText("Отменено");
+  expect(history.ok()).toBeTruthy();
+  expect(
+    (await history.json()).some(
+      (b: any) => b.workplace_id === "workplace-15" && b.status === "cancelled",
+    ),
+  ).toBe(true);
 });
 test("import center shows diff and applies only after explicit review", async ({
   page,
 }) => {
-  await page.goto("/");
-  await page.getByRole("combobox", { name: "Демо-роль" }).selectOption("admin");
+  await signIn(page, "admin");
   await page
     .getByRole("button", { name: "Импорт данных", exact: true })
     .click();
@@ -69,7 +72,9 @@ test("import center shows diff and applies only after explicit review", async ({
       exact: true,
     })
     .click();
-  await expect(page.getByRole("status")).toContainText("Применено: 1");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Применено:" }),
+  ).toContainText("Применено: 1");
 });
 test("lease UI previews separate office and manual common area and opens persisted agreement", async ({
   page,
@@ -117,21 +122,24 @@ test("lease UI previews separate office and manual common area and opens persist
     { headers, data: { previewId: (await p.json()).previewId } },
   );
   expect(b.ok()).toBeTruthy();
-  await page.goto("/");
-  await page.getByRole("combobox", { name: "Демо-роль" }).selectOption("admin");
+  await signIn(page, "admin");
   await page.getByRole("button", { name: "Аренда", exact: true }).click();
-  await page.getByText("Добавить арендатора", { exact: true }).click();
-  const tenant = page
-    .locator("form")
-    .filter({
-      has: page.getByRole("heading", { name: "Арендатор", exact: true }),
-    });
+  await page.getByRole("button", { name: "+ Арендатор", exact: true }).click();
+  const tenant = page.locator("form").filter({
+    has: page.getByRole("heading", { name: "Арендатор", exact: true }),
+  });
   await tenant
     .getByLabel("Название", { exact: true })
     .fill("Тестовый арендатор");
   await tenant.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await confirmChanges(page);
   await expect(tenant.getByRole("status")).toContainText("Сохранено");
-  await page.getByText("Создать договор аренды", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Закрыть панель", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "+ Новый договор", exact: true })
+    .click();
   await page.getByRole("combobox", { name: "Арендатор", exact: true }).click();
   await page
     .getByRole("option", { name: "Тестовый арендатор", exact: true })
